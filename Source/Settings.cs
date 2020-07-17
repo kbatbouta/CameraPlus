@@ -29,25 +29,27 @@ namespace CameraPlus
 
     public class CameraPlusSettings : ModSettings
     {
+
+
         public float zoomedOutPercent = 65;
-        public float zoomedInPercent = 1;
-        public int exponentiality = 1;
-        public float zoomedOutDollyPercent = 1;
-        public float zoomedInDollyPercent = 1;
-        public float zoomedOutScreenEdgeDollyFactor = 0.5f;
-        public float zoomedInScreenEdgeDollyFactor = 0.5f;
+        public float zoomedInPercent = 5;
+        public int exponentiality = 0;
+        public float zoomedOutDollyPercent = 0.6f;
+        public float zoomedInDollyPercent = 1.1f;
+        public float zoomedOutScreenEdgeDollyFactor = 0.35f;
+        public float zoomedInScreenEdgeDollyFactor = 0.55f;
         public bool stickyMiddleMouse = false;
         public bool zoomToMouse = true;
         public float soundNearness = 0;
-        public bool hideNamesWhenZoomedOut = true;
-        public int dotSize = 9;
-        public int hidePawnLabelBelow = 9;
-        public int hideThingLabelBelow = 32;
-        public bool mouseOverShowsLabels = true;
+        public bool hideNamesWhenZoomedOut = false;
+        public int dotSize = 0;
+        public int hidePawnLabelBelow = 0;
+        public int hideThingLabelBelow = 0;
+        public bool mouseOverShowsLabels = false;
         public bool dynamicSpeedControl = true;
         public bool experimentalTicking = false;
         public LabelStyle customNameStyle = LabelStyle.AnimalsDifferent;
-        public bool includeNotTamedAnimals = true;
+        public bool includeNotTamedAnimals = false;
 
         public KeyCode[] cameraSettingsMod = new[] { KeyCode.LeftShift, KeyCode.None };
         public KeyCode cameraSettingsKey = KeyCode.Tab;
@@ -66,12 +68,24 @@ namespace CameraPlus
         public static readonly float nearestHeight = 32;
         public static readonly float farOutHeight = 256;
 
+        public float speedGainSpeed = 0.5f;
+
+        public float speedLimitFast = 1.5f;
+        public float speedLimitSuperFast = 2.0f;
+        public float speedLimitUltraFast = 3.0f;
+
         public override void ExposeData()
         {
             base.ExposeData();
+            Scribe_Values.Look(ref speedGainSpeed, "speedGainSpeed", 0.5f);
+
+            Scribe_Values.Look(ref speedLimitFast, "speedLimitFast", 1.5f);
+            Scribe_Values.Look(ref speedLimitSuperFast, "speedLimitSuperFast", 2.0f);
+            Scribe_Values.Look(ref speedLimitUltraFast, "speedLimitUltraFast", 3.0f);
+
             Scribe_Values.Look(ref zoomedOutPercent, "zoomedOutPercent", 65);
-            Scribe_Values.Look(ref zoomedInPercent, "zoomedInPercent", 1);
-            Scribe_Values.Look(ref exponentiality, "exponentiality", 1);
+            Scribe_Values.Look(ref zoomedInPercent, "zoomedInPercent", 5);
+            Scribe_Values.Look(ref exponentiality, "exponentiality", 0);
             Scribe_Values.Look(ref zoomedOutDollyPercent, "zoomedOutDollyPercent", 1);
             Scribe_Values.Look(ref zoomedInDollyPercent, "zoomedInDollyPercent", 1);
             Scribe_Values.Look(ref zoomedOutScreenEdgeDollyFactor, "zoomedOutScreenEdgeDollyFactor", 0.5f);
@@ -116,44 +130,8 @@ namespace CameraPlus
 
             list.Gap(16f);
 
-            _ = list.Label("Zoom".Translate());
-
-            previous = zoomedInPercent;
-            list.Slider(ref zoomedInPercent, 0.1f, 20f, () => "Near".Translate() + ": " + Math.Round(zoomedInPercent, 1) + "%");
-            minRootResult = zoomedInPercent * 2;
-            if (previous != zoomedInPercent && map != null)
-            {
-                var val = Traverse.Create(Find.CameraDriver).Field("rootSize").GetValue<float>();
-                if (val != minRootInput)
-                    Find.CameraDriver.SetRootPosAndSize(map.rememberedCameraPos.rootPos, minRootInput);
-            }
-
-            previous = zoomedOutPercent;
-            list.Slider(ref zoomedOutPercent, 25f, 100f, () => "Far".Translate() + ": " + Math.Round(zoomedOutPercent, 1) + "%");
-            maxRootResult = zoomedOutPercent * 2;
-            if (previous != zoomedOutPercent && map != null)
-            {
-                var val = Traverse.Create(Find.CameraDriver).Field("rootSize").GetValue<float>();
-                if (val != maxRootInput)
-                    Find.CameraDriver.SetRootPosAndSize(map.rememberedCameraPos.rootPos, maxRootInput);
-            }
-
-            list.Gap(12f);
-
-            _ = list.Label("Exponentiality".Translate());
-            if (list.RadioButton("Off", exponentiality == 0, 8f)) exponentiality = 0;
-            for (var i = 1; i <= 3; i++)
-                if (list.RadioButton(i + "x", exponentiality == i, 8f)) exponentiality = i;
-
-            list.Gap(16f);
-
             _ = list.Label("SoundNearness".Translate() + ": " + Math.Round(soundNearness * 100, 1) + "%");
             list.Slider(ref soundNearness, 0f, 1f, null);
-
-            list.Gap(6f);
-
-            list.CheckboxLabeled("ZoomToMouse".Translate(), ref zoomToMouse);
-            list.CheckboxLabeled("MouseRevealsLabels".Translate(), ref mouseOverShowsLabels);
 
             list.Gap(24f);
 
@@ -221,31 +199,27 @@ namespace CameraPlus
 
             list.Gap(24f);
 
-            list.CheckboxLabeled("The Smooziatron 5001", ref dynamicSpeedControl);
-            list.CheckboxLabeled("The ticketron 1000", ref experimentalTicking);
+            list.CheckboxLabeled("The Smooziatron 5002", ref dynamicSpeedControl);
 
             if (CameraPlusMain.Settings.experimentalTicking)
                 dynamicSpeedControl = false;
 
             if (CameraPlusMain.Settings.dynamicSpeedControl)
                 experimentalTicking = false;
-#if LEGACY
-            if (hideNamesWhenZoomedOut)
+
+            if (CameraPlusMain.Settings.dynamicSpeedControl)
             {
-            	var pixel = "Pixel".Translate();
-            	var label1 = "HidePawnLabelBelow".Translate();
-            	list.Slider(ref hidePawnLabelBelow, 0, 128, () => label1 + (hidePawnLabelBelow == 0 ? "Never".Translate() : hidePawnLabelBelow + " " + pixel));
-            	var label2 = "HideThingLabelBelow".Translate();
-            	list.Slider(ref hideThingLabelBelow, 0, 128, () => label2 + (hideThingLabelBelow == 0 ? "Never".Translate() : hideThingLabelBelow + " " + pixel));
-            	list.Slider(ref dotSize, 1, 32, () => "ShowMarkerBelow".Translate() + dotSize + " " + "Pixel".Translate());
-            	foreach (var label in Enum.GetNames(typeof(LabelStyle)))
-            	{
-            		var val = (LabelStyle)Enum.Parse(typeof(LabelStyle), label);
-            		if (list.RadioButton(label.Translate(), customNameStyle == val, 8f)) customNameStyle = val;
-            	}
-            	list.CheckboxLabeled("IncludeNotTamedAnimals".Translate(), ref includeNotTamedAnimals);
+                _ = list.Label("The game speed will be changed when moving the camera inorder to smooth the experience.");
+                _ = list.Label("(The default values are recommended)");
+
+                list.Slider(ref speedGainSpeed, 0.25f, 15f, () => "Ticks gainback speed " + Math.Round(speedGainSpeed, 1) + " " + "Tick/Second");
+
+                list.Slider(ref speedLimitFast, 1.0f, 3.0f, () => "Minimum tick multiplier for 2x Speed " + Math.Round(speedLimitFast, 1) + " " + "TPS (Vanilla is 3)");
+
+                list.Slider(ref speedLimitSuperFast, 2.0f, 6.0f, () => "Minimum tick multiplier for 3x Speed " + Math.Round(speedLimitSuperFast, 1) + " " + "TPS (Vanilla is 6)");
+
+                list.Slider(ref speedLimitUltraFast, 3.0f, 15f, () => "Minimum tick multiplier for dev-mod " + Math.Round(speedLimitUltraFast, 1) + " " + "TPS (Vanilla is 15)");
             }
-#endif
 
             if (CameraPlusMain.Settings.experimentalTicking)
                 CameraPlusMain.Settings.dynamicSpeedControl = false;
@@ -257,22 +231,28 @@ namespace CameraPlus
 
             if (list.ButtonText("RestoreToDefaultSettings".Translate()))
             {
-                zoomedOutPercent = 65;
-                zoomedInPercent = 1;
-                exponentiality = 1;
+                speedGainSpeed = 0.5f;
+
+                speedLimitFast = 1.5f;
+                speedLimitSuperFast = 2.0f;
+                speedLimitUltraFast = 3.0f;
+
+                zoomedOutPercent = 65.0f;
+                zoomedInPercent = 5.1f;
+                exponentiality = 0;
                 zoomedOutDollyPercent = 1;
                 zoomedInDollyPercent = 1;
                 zoomedOutScreenEdgeDollyFactor = 0.5f;
                 zoomedInScreenEdgeDollyFactor = 0.5f;
                 stickyMiddleMouse = false;
                 soundNearness = 0;
-                hideNamesWhenZoomedOut = true;
-                dotSize = 9;
-                hidePawnLabelBelow = 9;
-                hideThingLabelBelow = 32;
+                hideNamesWhenZoomedOut = false;
+                dotSize = 0;
+                hidePawnLabelBelow = 0;
+                hideThingLabelBelow = 0;
                 mouseOverShowsLabels = true;
                 customNameStyle = LabelStyle.AnimalsDifferent;
-                includeNotTamedAnimals = true;
+                includeNotTamedAnimals = false;
                 cameraSettingsMod[0] = KeyCode.LeftShift;
                 cameraSettingsMod[1] = KeyCode.None;
                 cameraSettingsKey = KeyCode.Tab;

@@ -1,4 +1,5 @@
 ﻿using HarmonyLib;
+using JetBrains.Annotations;
 using RimWorld;
 using System;
 using System.Collections.Generic;
@@ -129,37 +130,6 @@ namespace CameraPlus
                 return Tools.MouseDistanceSquared(loc, true) <= 2.25f;
 
             return false;
-        }
-    }
-
-    [HarmonyPatch(typeof(PawnRenderer))]
-    [HarmonyPatch(nameof(PawnRenderer.RenderPawnAt))]
-    [HarmonyPatch(new Type[] { typeof(Vector3), typeof(RotDrawMode), typeof(bool), typeof(bool) })]
-    static class PawnRenderer_RenderPawnAt_Patch
-    {
-        [HarmonyPriority(10000)]
-        static bool Prefix(Pawn ___pawn)
-        {
-            if (CameraPlusMain.skipCustomRendering)
-                return true;
-
-            var cameraDelegate = Tools.GetCachedCameraDelegate(___pawn);
-            if (cameraDelegate.GetCameraColors == null)
-            {
-                if (CameraPlusMain.Settings.customNameStyle == LabelStyle.HideAnimals)
-                    return true;
-            }
-
-            if (Tools.PawnHasNoLabel(___pawn))
-                return true;
-
-            return Tools.ShouldShowBody(___pawn);
-        }
-
-        static void Postfix(Pawn ___pawn)
-        {
-            if (CameraPlusMain.Settings.hideNamesWhenZoomedOut && CameraPlusMain.Settings.customNameStyle != LabelStyle.HideAnimals)
-                _ = Tools.GetMainColor(___pawn); // trigger caching
         }
     }
 
@@ -296,11 +266,11 @@ namespace CameraPlus
     //
     [HarmonyPatch(typeof(CameraDriver))]
     [HarmonyPatch(nameof(CameraDriver.CurrentViewRect), MethodType.Getter)]
-    static class CameraDriver_CurrentViewRect_Patch
+    public static class CameraDriver_CurrentViewRect_Patch
     {
         static readonly MethodInfo m_Main_LerpRootSize = SymbolExtensions.GetMethodInfo(() => Tools.LerpRootSize(0f));
 
-        static IEnumerable<CodeInstruction> Transpiler(ILGenerator generator, IEnumerable<CodeInstruction> instructions)
+        public static IEnumerable<CodeInstruction> Transpiler(ILGenerator generator, IEnumerable<CodeInstruction> instructions)
         {
             var v_lerpedRootSize = generator.DeclareLocal(typeof(float));
 
@@ -452,6 +422,38 @@ namespace CameraPlus
             yield return new CodeInstruction(OpCodes.Call, Refs.p_MyCamera);
             yield return new CodeInstruction(OpCodes.Call, m_ApplyZoom);
             yield return new CodeInstruction(OpCodes.Ret);
+        }
+    }
+
+    
+    [HarmonyPatch(typeof(PawnRenderer))]
+    [HarmonyPatch(nameof(PawnRenderer.RenderPawnAt))]
+    [HarmonyPatch(new Type[] { typeof(Vector3), typeof(RotDrawMode), typeof(bool), typeof(bool) })]
+    static class PawnRenderer_RenderPawnAt_Patch
+    {
+        [HarmonyPriority(10000)]
+        static bool Prefix(Pawn ___pawn)
+        {
+            if (CameraPlusMain.skipCustomRendering)
+                return true;
+
+            var cameraDelegate = Tools.GetCachedCameraDelegate(___pawn);
+            if (cameraDelegate.GetCameraColors == null)
+            {
+                if (CameraPlusMain.Settings.customNameStyle == LabelStyle.HideAnimals)
+                    return true;
+            }
+
+            if (Tools.PawnHasNoLabel(___pawn))
+                return true;
+
+            return Tools.ShouldShowBody(___pawn);
+        }
+
+        static void Postfix(Pawn ___pawn)
+        {
+            if (CameraPlusMain.Settings.hideNamesWhenZoomedOut && CameraPlusMain.Settings.customNameStyle != LabelStyle.HideAnimals)
+                _ = Tools.GetMainColor(___pawn); // trigger caching
         }
     }
 

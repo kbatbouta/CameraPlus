@@ -16,23 +16,28 @@ namespace CameraPlus
     [StaticConstructorOnStartup]
     public static class Patch_TickRateMultiplier
     {
-        private readonly static float gainMultiplier = 0.08f;
-        private readonly static float decayMultiplier = 0.025f;
 
-        public static float tickMultiplierOld = 0.0f;
+        public static float viewDollyLevel = 0.0f;
         public static float viewActivityLevel = 0.0f;
+
         public static float nMinusCameraScale = 0.0f;
+        public static float rootSize = 0;
 
+        private static float oldTickRateMultiplier = 0f;
 
-        private static int ticksAbs = 0;
+        public static CameraDriver cameraDriver = null;
+
 
         static Patch_TickRateMultiplier()
         {
             var harmony = new Harmony("net.cameraplus.speed");
 
-            var tickPost = new HarmonyMethod(typeof(Patch_TickRateMultiplier), nameof(TickManager_Postfix));
-            var driverDollyPost = new HarmonyMethod(typeof(Patch_TickRateMultiplier), nameof(CameraDriver_Dolly_Postfix));
-            var driverOnGuiPost = new HarmonyMethod(typeof(Patch_TickRateMultiplier), nameof(CameraDriver_OnGUI_Postfix));
+            var tickPost = new HarmonyMethod(typeof(Patch_TickRateMultiplier),
+                nameof(TickManager_Postfix));
+            var driverDollyPost = new HarmonyMethod(typeof(Patch_TickRateMultiplier),
+                nameof(CameraDriver_Dolly_Postfix));
+            var driverOnGuiPost = new HarmonyMethod(typeof(Patch_TickRateMultiplier),
+                nameof(CameraDriver_OnGUI_Postfix));
 
             harmony.Patch(AccessTools.PropertyGetter(typeof(TickManager), nameof(TickManager.TickRateMultiplier)), null, tickPost);
             harmony.Patch(AccessTools.Method(typeof(CameraDriver), nameof(CameraDriver.CalculateCurInputDollyVect)), null, driverDollyPost);
@@ -41,98 +46,77 @@ namespace CameraPlus
 
         static void TickManager_Postfix(ref float __result, TickManager __instance)
         {
-            if (CameraPlusMain.Settings.experimentalTicking)
+            if (!CameraPlusMain.Settings.dynamicSpeedControl) { return; }
+
+            if (cameraDriver == null) { cameraDriver = Find.CameraDriver; }
+
+            var gameSpeed = __instance.CurTimeSpeed;
+            if (gameSpeed == TimeSpeed.Paused) { return; }
+
+            var deltaTime = Time.deltaTime;
+            if (Mathf.Abs(rootSize - nMinusCameraScale) > 0.001f)
             {
-                if (__instance.CurTimeSpeed != TimeSpeed.Ultrafast)
-                    return;
-
-                var deltaT = Time.deltaTime;
-
-                if (deltaT < 0.021f)
-                    return;
-
-                __result = __result * 0.98f;
-                __result = __result * gainMultiplier + tickMultiplierOld * (1 - gainMultiplier);
-                tickMultiplierOld = __result;
+                nMinusCameraScale = rootSize; viewActivityLevel = 2 * rootSize; deltaTime *= 10;
             }
-            else if (CameraPlusMain.Settings.dynamicSpeedControl)
+
+            if (viewActivityLevel + viewDollyLevel > 5f)
             {
-                if (Find.CameraDriver.CurrentViewRect.Area != nMinusCameraScale)
+                switch (gameSpeed)
                 {
-                    nMinusCameraScale = Find.CameraDriver.CurrentViewRect.Area;
-
-                    switch (Find.CameraDriver.CurrentZoom)
-                    {
-                        case CameraZoomRange.Furthest:
-                            viewActivityLevel += 150f; break;
-                        case CameraZoomRange.Far:
-                            viewActivityLevel += 80f; break;
-                        case CameraZoomRange.Middle:
-                            viewActivityLevel += 40f; break;
-                        case CameraZoomRange.Close:
-                            viewActivityLevel += 5f; break;
-                    }
-                }
-
-                if (viewActivityLevel <= 15f)
-                {
-                    __result = __result * gainMultiplier + tickMultiplierOld * (1f - gainMultiplier);
-                    tickMultiplierOld = __result;
-                }
-                else
-                {
-                    var tickMultiplier = 0f;
-
-                    switch (__instance.CurTimeSpeed)
-                    {
-                        case TimeSpeed.Normal:
-                            tickMultiplier = 1.0f; break;
-                        case TimeSpeed.Fast:
-                            tickMultiplier = Mathf.Max(2.0f - viewActivityLevel / 128f, 1.0f); break;
-                        case TimeSpeed.Superfast:
-                            tickMultiplier = Mathf.Max(3.0f - viewActivityLevel / 96f, 1.5f); break;
-                        case TimeSpeed.Ultrafast:
-                            tickMultiplier = Mathf.Max(4.0f - viewActivityLevel / 64f, 2.0f); break;
-                    }
-
-                    __result = __result * decayMultiplier + tickMultiplier * (1f - decayMultiplier);
-                    tickMultiplierOld = __result;
+                    case TimeSpeed.Normal:
+                        __result = 1.0f;
+                        break;
+                    case TimeSpeed.Fast:
+                        __result = Mathf.Max(oldTickRateMultiplier - 0.5f * deltaTime, CameraPlusMain.Settings.speedLimitFast);
+                        break;
+                    case TimeSpeed.Superfast:
+                        __result = Mathf.Max(oldTickRateMultiplier - 1.25f * deltaTime, CameraPlusMain.Settings.speedLimitSuperFast);
+                        break;
+                    case TimeSpeed.Ultrafast:
+                        __result = Mathf.Max(oldTickRateMultiplier - 4.5f * deltaTime, CameraPlusMain.Settings.speedLimitUltraFast);
+                        break;
                 }
             }
+            else { __result = Mathf.Min(oldTickRateMultiplier + CameraPlusMain.Settings.speedGainSpeed * deltaTime, __result); }
+
+            oldTickRateMultiplier = __result;
         }
 
         static void CameraDriver_Dolly_Postfix(ref Vector2 __result)
         {
             if (!CameraPlusMain.Settings.dynamicSpeedControl) return;
 
-            viewActivityLevel = __result.magnitude;
+            viewDollyLevel = __result.magnitude;
         }
 
-        static void CameraDriver_OnGUI_Postfix(CameraDriver __instance)
+        static void CameraDriver_OnGUI_Postfix(CameraDriver __instance, float ___rootSize)
         {
             if (!CameraPlusMain.Settings.dynamicSpeedControl) return;
+
+            Patch_TickRateMultiplier.rootSize = ___rootSize;
 
             if (Find.TickManager.Paused || Find.TickManager.NotPlaying)
                 return;
 
             if (KeyBindingDefOf.MapDolly_Left.IsDown || KeyBindingDefOf.MapDolly_Up.IsDown || KeyBindingDefOf.MapDolly_Right.IsDown || KeyBindingDefOf.MapDolly_Down.IsDown)
             {
-                var modifer = 0f;
-
-                switch (Find.CameraDriver.CurrentZoom)
+                switch (cameraDriver.CurrentZoom)
                 {
                     case CameraZoomRange.Furthest:
-                        modifer = 150f; break;
+                        viewActivityLevel = 150f;
+                        break;
                     case CameraZoomRange.Far:
-                        modifer = 80f; break;
+                        viewActivityLevel = 80f;
+                        break;
                     case CameraZoomRange.Middle:
-                        modifer = 40f; break;
+                        viewActivityLevel = 40f;
+                        break;
                     case CameraZoomRange.Close:
-                        modifer = 5f; break;
+                        viewActivityLevel = 5f;
+                        break;
                 }
-
-                viewActivityLevel = modifer;
             }
+            else { viewActivityLevel = 0f; }
         }
     }
 
